@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>KPI — Kirstein Performance Index (v5.1)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+ body{background:#fafafa}.kpi{max-width:980px;margin:0 auto}.pill{padding:2px 8px;border-radius:9999px;border:1px solid #e5e7eb;font-size:12px}
+ .pill.active{background:#000;color:#fff;border-color:#000}.admin{position:fixed;right:12px;bottom:12px;background:rgba(0,0,0,.85);color:#fff;padding:8px 12px;border-radius:9999px;font-size:12px;z-index:50}
+</style>
+</head>
+<body><div id="root" class="kpi p-6"></div>
+<script type="text/babel">
+const {useState,useMemo,useEffect}=React;
+const q=(k)=>new URL(location.href).searchParams.get(k);
+const CFG={email:q("email")||"",hook:q("hook")||"",admin:q("admin")||"",countApi:q("count_api")||""};
+
+const DOMAIN_W={discipline:.2,drive:.15,social:.1,business:.1,eq:.15,spiritual:.1,health:.15,lifestyle:.05};
+const LEVELS=[
+ {name:"Brittle",min:0,max:75},
+ {name:"Flexible",min:76,max:100},
+ {name:"Solid",min:101,max:120},
+ {name:"Sharpened",min:121,max:140},
+ {name:"Resilient",min:141,max:160},
+ {name:"Relentless",min:161,max:175},
+ {name:"Unbreakable",min:176,max:190},
+];
+const LEVEL_DESC={
+ "Brittle":"Easily derailed; minimal structure. Focus on micro‑habits and daily movement.",
+ "Flexible":"Adaptable, starts strong but struggles to finish. Build focus blocks and consistency.",
+ "Solid":"Reliable, structured. Risks plateau and comfort. Add stretch challenges and EQ work.",
+ "Sharpened":"Disciplined and intense; watch burnout. Balance push with recovery and perspective.",
+ "Resilient":"Strong across health, relationships, and output. Beware complacency; set 10× projects.",
+ "Relentless":"High drive, high execution. Improve empathy, systems, and balance to avoid blind spots.",
+ "Unbreakable":"Integrated peak performance: vision + discipline + EQ. Guard against ego and stagnation."
+};
+// Forced-choice (14 blocks × 4 items)
+const FC=[
+ {id:1,s:[["I keep promises I make to myself.","discipline",1],["I often pick up on subtle social cues.","eq",1],["I’m energized by pursuing new opportunities.","drive",1],["I protect my sleep schedule as much as work deadlines.","lifestyle",1]]},
+ {id:2,s:[["I’m most productive when competing against others.","drive",1],["I track my nutrition or activity with a system.","health",1],["I stay composed when under pressure.","eq",1],["I look for unconventional ways to solve problems.","business",1]]},
+ {id:3,s:[["I sometimes put things off until the last minute.","discipline",-1],["I get restless without a new challenge.","drive",1],["I dedicate time to reflection or prayer.","spiritual",1],["I adapt how I speak depending on who I’m with.","social",1]]},
+ {id:4,s:[["I prefer financial stability to big risks.","business",-1],["I use checklists to stay consistent.","discipline",1],["I sometimes misread people’s intentions.","eq",-1],["I prioritize sleep even under deadlines.","lifestyle",1]]},
+ {id:5,s:[["I recover quickly from setbacks.","health",1],["I sometimes avoid risks to avoid failure.","drive",-1],["I enjoy making new connections.","social",1],["I occasionally feel disconnected from purpose.","spiritual",-1]]},
+ {id:6,s:[["I deliberately push beyond my comfort zone.","drive",1],["I listen carefully before I respond.","eq",1],["I don’t always follow through on fitness goals.","health",-1],["I protect time for deep work.","discipline",1]]},
+ {id:7,s:[["I thrive under high pressure.","health",1],["I sometimes abandon projects midway.","discipline",-1],["I build trust quickly.","social",1],["I look for ways to grow income or impact.","business",1]]},
+ {id:8,s:[["I journal or reflect to clarify thoughts.","spiritual",1],["I sometimes struggle to manage stress.","eq",-1],["I enjoy strategic financial risks.","business",1],["I meet most of my fitness goals.","health",1]]},
+ {id:9,s:[["I pursue ambitious, long‑term goals.","drive",1],["I sometimes feel low energy through the day.","health",-1],["I keep habits even when inconvenient.","discipline",1],["I’m good at diffusing tension.","eq",1]]},
+ {id:10,s:[["I maintain consistency in routines.","discipline",1],["I sometimes neglect relationships when chasing goals.","social",-1],["I sometimes plateau instead of pushing higher.","drive",-1],["I deliberately practice mindfulness or prayer.","spiritual",1]]},
+ {id:11,s:[["I adapt quickly when plans fall apart.","health",1],["I sometimes go weeks without consistent exercise.","health",-1],["I motivate others with my intensity.","drive",1],["I occasionally lose patience when frustrated.","eq",-1]]},
+ {id:12,s:[["I plan my finances carefully.","business",1],["I sometimes avoid difficult conversations.","social",-1],["I find meaning in hardship.","spiritual",1],["I use morning rituals to stay on track.","discipline",1]]},
+ {id:13,s:[["I chase opportunities even when risky.","business",1],["I sometimes question my sense of purpose.","spiritual",-1],["I notice body‑language cues.","eq",1],["I treat exercise as non‑negotiable.","health",1]]},
+ {id:14,s:[["I sometimes push so hard I burn out.","health",-1],["I often inspire others with my vision.","drive",1],["I sometimes make excuses for missing health habits.","health",-1],["I value inner peace as much as success.","spiritual",1]]},
+];
+// Situational Judgement (11)
+const SJT=[
+ {id:1,q:"A partner drops out 48 hours before launch. You…",o:[["Reassign tasks + adapt timeline; inform stakeholders.","balanced"],["Take on extra work yourself to keep the deadline.","driven"],["Delay a week to preserve quality.","conservative"],["Cut scope; ship simpler on time.","flexible"]]},
+ {id:2,q:"You’ve worked 14 days straight and feel exhausted. You…",o:[["Keep momentum despite fatigue.","driven"],["Take one full recovery day, then resume.","balanced"],["Scale back to essentials temporarily.","conservative"],["Switch to lighter tasks until energy rebounds.","flexible"]]},
+ {id:3,q:"You’re offered a raise lower than expected. You…",o:[["Accept; still progress.","conservative"],["Ask for time; prepare data and revisit.","balanced"],["Push back immediately with a higher figure.","driven"],["Counter with money + perks.","social"]]},
+ {id:4,q:"Two teammates are in heated disagreement. You…",o:[["Facilitate dialogue so both are heard.","social"],["Propose a compromise to keep moving.","balanced"],["Let them work it out directly.","conservative"],["Support the fastest‑delivery approach.","driven"]]},
+ {id:5,q:"You’ve missed 3 workouts in a row. You…",o:[["Resume normal schedule immediately.","driven"],["Start smaller this week to rebuild momentum.","balanced"],["Replace with daily walking/movement.","flexible"],["Schedule workouts with a partner.","social"]]},
+ {id:6,q:"Offered a startup investment. You…",o:[["Research; invest a small affordable amount.","balanced"],["Decline; prioritize stability.","conservative"],["Join only if trusted investors commit.","social"],["Invest boldly; big bets.","driven"]]},
+ {id:7,q:"Scope creep threatens your timeline. You…",o:[["Negotiate scope reduction + lock micro‑deadline.","balanced"],["Push team harder to hit original scope/time.","driven"],["Extend deadline to preserve full scope.","conservative"],["Ship core now; fast follow later.","flexible"]]},
+ {id:8,q:"Asked to give a last‑minute presentation. You…",o:[["Accept and prepare a tight outline + stories.","driven"],["Ask for 24h to prepare properly.","balanced"],["Decline and nominate someone more prepared.","conservative"],["Accept but convert into a Q&A.","social"]]},
+ {id:9,q:"A teammate is underperforming. You…",o:[["Set clear expectations + short improvement plan.","balanced"],["Reassign work; take critical tasks yourself.","driven"],["Move them to low‑impact tasks.","conservative"],["Pair with a strong mentor 2 weeks.","social"]]},
+ {id:10,q:"Quarterly revenue missed target. You…",o:[["Audit funnel; run 1–2 high‑leverage experiments.","balanced"],["Double outbound for 2 weeks.","driven"],["Cut expenses; protect runway.","conservative"],["Refocus on one ICP + tighter offer.","flexible"]]},
+ {id:11,q:"High‑profile project requires weekend work. You…",o:[["Commit and deliver.","driven"],["Negotiate a split plan to protect rest.","balanced"],["Defer to Monday; quality over rush.","conservative"],["Ship solid v1 now; iterate next week.","flexible"]]},
+];
+const MAP={balanced:{discipline:.6,lifestyle:.4,health:.3,eq:.3},driven:{drive:.8,business:.2},conservative:{discipline:.2,lifestyle:.2,health:.2,business:.2},flexible:{lifestyle:.5,health:.2,discipline:.1},social:{eq:.5,social:.5}};
+// Behavioral (4)
+const BEH=[
+ {id:1,q:"In last 14 days, days with ≥30 min exercise?",b:["0","1–3","4–7","8–10","11–14"],p:[0,1,2,3,5]},
+ {id:2,q:"Days last week in bed within ±30 min of target?",b:["0","1–2","3–4","5–6","7"],p:[0,1,2,3,5]},
+ {id:3,q:"Consecutive days tracking calories last month?",b:["0","1–3","4–7","8–14","15+"],p:[0,1,2,3,5]},
+ {id:4,q:"Hours last week in deep work (distraction‑free)?",b:["0","1–3","4–7","8–10","11+"],p:[0,1,2,3,5]},
+];
+
+const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+const t2m=(t)=>{const [h,m]=t.split(":").map(Number);return h*60+(m||0)};
+const m2t=(m)=>{m%=1440;if(m<0)m+=1440;const h=String(Math.floor(m/60)).padStart(2,"0"),mm=String(m%60).padStart(2,"0");return h+":"+mm};
+const bmi=(cm,kg)=>{if(!cm||!kg)return;const m=cm/100;return +(kg/(m*m)).toFixed(1)};
+const bmiCat=(b)=>b==null?"—":b<18.5?"Underweight":b<25?"Normal weight":b<30?"Overweight":b<35?"Obesity (Class I)":b<40?"Obesity (Class II)":"Obesity (Class III)";
+const total=(d)=>{let s=0,w=0;Object.entries(d).forEach(([k,v])=>{const ww=DOMAIN_W[k]||0;s+=v*ww;w+=ww});return Math.round((w?s/w:0)*190)};
+const level=(sc)=>LEVELS.find(L=>sc>=L.min&&sc<=L.max)||LEVELS[0];
+const HN=(k)=>({discipline:"Discipline & Habits",drive:"Motivation & Drive",social:"Social Intelligence",business:"Business/Financial Mindset",eq:"Emotional Intelligence (EQ)",spiritual:"Emotional/Spiritual Health",health:"Physical Fitness & Health",lifestyle:"Lifestyle Rhythms"})[k]||k;
+function Bar({label,value}){return(<div className="space-y-1"><div className="flex justify-between text-sm"><span>{label}</span><span>{Math.round(value)}%</span></div><div className="h-2 bg-gray-200 rounded-full overflow-hidden"><div className="h-full" style={{width:clamp(value,0,100)+"%",background:"#000"}}/></div></div>)}
+function narrative(dom, lvl){
+ const ent=Object.entries(dom).sort((a,b)=>b[1]-a[1]); const strengths=ent.slice(0,2).map(([k])=>HN(k)); const lows=ent.slice(-2).map(([k])=>HN(k));
+ const d=dom; let risk="stability‑oriented"; if(d.drive>=.7&&d.business>=.6) risk="bold and opportunity‑seeking"; else if(d.drive>=.55||d.business>=.55) risk="calculated and pragmatic";
+ let social="direct and task‑first"; if(d.eq>=.65&&d.social>=.6) social="empathetic and socially attuned"; else if(d.eq>=.55&&d.social>=.5) social="generally warm with room to deepen listening";
+ const consistency=d.discipline>=.65?"highly consistent":d.discipline>=.5?"steady but occasionally inconsistent":"hot–cold (start fast, stall later)";
+ const res=((d.health+d.spiritual+d.lifestyle)/3); const resTxt=res>=.65?"strong resilience with good routines":res>=.5?"workable resilience but stress leaks through":"fragile recovery and low reserves";
+ const br=(d.drive>=.7&&res<.55)?"High (push exceeds recovery)":(res>=.65?"Low":"Moderate");
+ return `You map to **${lvl}** on the wooden plank spectrum. Your strongest levers are **${strengths[0]}** and **${strengths[1]}**. The biggest growth constraints are **${lows[0]}** and **${lows[1]}**. Your risk posture is **${risk}**. Interpersonally you present as **${social}**. Execution style is **${consistency}**, and your recovery capacity is **${resTxt}**. **Burnout risk:** ${br}. Focus the next 60 days on closing the weakest domains while preserving your best strengths.`;
+}
+
+function App(){
+ const [step,setStep]=useState(0);
+ const [front,setFront]=useState({name:"",age:"",sex:"male",heightCm:"",weightKg:"",injuryOrDisability:"no",injuryNotes:"",familyHistory:{cvd:false,dm:false,cancer:false,obesity:false,htn:false},wakeTime:"07:00",sleepTime:"22:00",energyLevel:"moderate",freeTimePerWeek:"2-4h",dietStyle:"balanced",fastingCurrent:"none",goalType:"weight_loss",targetWeightKg:"",horizonMonths:""});
+ const [email,setEmail]=useState(""),[emailStatus,setEmailStatus]=useState("");
+ const [fc,setFc]=useState({}),[sjt,setSjt]=useState({}),[beh,setBeh]=useState({});
+ const [sent,setSent]=useState(false),[count,setCount]=useState(null),[note,setNote]=useState("");
+
+ const comp=useMemo(()=>{
+  const T={discipline:0,drive:0,social:0,business:0,eq:0,spiritual:0,health:0,lifestyle:0};
+  FC.forEach(b=>{const a=fc[b.id]||{}; b.s.forEach((it,i)=>{const[,dom,pol]=it; let d=0; if(a.m===i)d+=2; if(a.l===i)d-=1; d*=pol||1; T[dom]+=d;})});
+  const FCn={...T}; Object.keys(FCn).forEach(k=>{const v=T[k]/FC.length; FCn[k]=clamp((v+0.25)/0.5,0,1)});
+  const SJTr={discipline:0,drive:0,social:0,business:0,eq:0,spiritual:0,health:0,lifestyle:0};
+  SJT.forEach(it=>{const sel=sjt[it.id]; if(sel==null)return; const tag=it.o[sel][1]; const c=MAP[tag]||{}; Object.keys(c).forEach(k=>SJTr[k]+=c[k])});
+  const SJTn={...SJTr}; Object.keys(SJTn).forEach(k=>SJTn[k]=clamp(SJTr[k]/(SJT.length*.8),0,1));
+  const B={discipline:0,drive:0,social:0,business:0,eq:0,spiritual:0,health:0,lifestyle:0}; let Bmax=0;
+  BEH.forEach(bi=>{const idx=beh[bi.id]; const pts=idx!=null?bi.p[idx]:0; Bmax+=bi.p[bi.p.length-1]; if(bi.id===1)B.health+=pts; if(bi.id===2)B.lifestyle+=pts; if(bi.id===3)B.discipline+=pts; if(bi.id===4)B.discipline+=pts;});
+  const Bn={...B}; const sc=Bmax?1/(Bmax/2):0; Object.keys(Bn).forEach(k=>Bn[k]=clamp(Bn[k]*sc,0,1));
+  const combined={}; Object.keys(FCn).forEach(k=>combined[k]=FCn[k]*.6+SJTn[k]*.25+Bn[k]*.15);
+  const raw=total(combined); const lev=level(raw); const capped=(combined.health<.45||combined.discipline<.45||combined.eq<.45)&&lev.max>140; const levName=capped?lev.name+" (capped)":lev.name;
+  const bars={Drive:clamp(((combined.drive+combined.business)/2)*100,0,100),"Emotional Intelligence (EQ)":clamp(((combined.eq+combined.social)/2)*100,0,100),Discipline:clamp(((combined.discipline+combined.lifestyle)/2)*100,0,100),Resilience:clamp(((combined.health+combined.spiritual)/2)*100,0,100)};
+  return {combined,raw,levName,bars};
+ },[fc,sjt,beh]);
+
+ const rx=useMemo(()=>{
+  const d=comp.combined; const H=+front.heightCm||undefined; const W=+front.weightKg||undefined; const B=bmi(H,W);
+  const books=[]; const add=(t,w)=>{if(!books.find(x=>x.title===t))books.push({title:t,why:w})};
+  if((d.discipline||0)<.6)add("Atomic Habits — James Clear","Build systems; raise adherence.");
+  if((d.eq||0)<.6||(d.social||0)<.6)add("Cues — Vanessa Van Edwards","Improve social perception & influence (EQ).");
+  if((d.drive||0)<.6)add("Relentless — Tim Grover","Increase intensity & goal identity.");
+  if((d.business||0)<.6){add("Zero to One — Peter Thiel","Push innovation & asymmetric bets."); add("Never Split the Difference — Chris Voss","Sharpen negotiation under pressure.");}
+  if((d.spiritual||0)<.55){add("Meditations — Marcus Aurelius","Develop inner resilience & perspective."); add("The Power of Now — Eckhart Tolle","Reduce reactivity; improve presence.");}
+  const cur=front.wakeTime||"07:00"; const target=Math.max(t2m("06:00"),t2m(cur)-60); const bed=t2m(front.sleepTime||"22:00");
+  const sleep={wake:m2t(target),bed:m2t(bed),off:m2t(bed-30)};
+  let track="recomp"; if(front.injuryOrDisability==="yes")track="gentle"; else { if((B||0)>=30)track="fat_loss"; else if((B||0)<25) track=front.goalType==="weight_loss"?"fat_loss":"performance";}
+  const time=front.freeTimePerWeek==="<2h"?"condensed":front.freeTimePerWeek==="5h+"?"expanded":"standard"; const plan={}; const set=(d,arr)=>plan[d]=arr;
+  if(track==="gentle"){set("Mon",["Chair squats 3×10","Wall push‑ups 3×8","Band rows 3×12","Walk 10–15m"]);set("Tue",["Balance 10m","ROM stretch 10–15m"]);set("Wed",["Repeat Mon"]);set("Thu",["Repeat Tue"]);set("Fri",["Repeat Mon"]);set("Sat",["Easy walk 20m + stretch"]);set("Sun",["Rest or easy walk 20m"]);}
+  else if(track==="fat_loss"&&time==="condensed"){["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].forEach(d=>set(d,["20–25m EMOM (air squats/push‑ups/rows)","Brisk walk 10–15m"]));}
+  else if(track==="fat_loss"){set("Mon",["BW squats 3×12","Push‑ups 3×8–15","DB rows 3×12/side","Plank 3×30–45s"]);set("Tue",["Brisk walk/cycle 25–30m","Mobility 5m"]);set("Wed",["Repeat Mon"]);set("Thu",["Brisk walk/cycle 25–30m","Mobility 5m"]);set("Fri",["Repeat Mon"]);set("Sat",["Yoga/stretch 20m"]);set("Sun",["Easy walk 20m"]);}
+  else if(track==="recomp"){set("Mon",["Upper: DB press 3×10","Rows 3×12","Lateral raise 3×12","Plank 3×30–45s"]);set("Tue",["Zone‑2 cardio 25–30m"]);set("Thu",["Lower: Goblet squat 3×12","RDL 3×10","Split squat 3×10/side","Side plank 3×30s"]);set("Sat",["Intervals 10×1:1 (easy:hard)","Mobility 5–10m"]);set("Wed",["Optional walk 20m"]);set("Sun",["Rest or mobility 10–15m"]);}
+  else if(track==="performance"){set("Mon",["Full‑body strength 45–60m (5 lifts)","Core 5–10m"]);set("Tue",["Intervals 8×2:1 (easy:hard)"]);set("Thu",["Full‑body strength 45–60m (progressive)"]);set("Sat",["Zone‑2 cardio 45–60m"]);set("Wed",["Mobility 20m"]);set("Sun",["Mobility 20m or rest"]);}
+  const male=front.sex==="male"; let kcal; if(front.goalType==="weight_loss"){kcal=(B||0)>=35?(male?1700:1450):(male?1800:1500)} else {kcal=male?2400:2000}
+  const fast=front.fastingCurrent==="none"?"16:8 daily (+1×24h/month)":front.fastingCurrent+" (continue) + 1×24h/month";
+  const goalW=front.targetWeightKg?+front.targetWeightKg:(W||75); const protein=Math.round((goalW||75)*1.8);
+  const meals=["12:00 — Lean protein + whole grain + veg + olive oil (≈600 kcal)","15:00 — Greek yogurt + 15 almonds (≈300 kcal)","19:00 — Fish/Chicken + sweet potato + salad (≈700 kcal)","20:00 — Fruit + 2 tbsp peanut butter (≈200 kcal)"];
+  if(front.dietStyle==="plant_based"){meals[0]="12:00 — Tofu/Tempeh + quinoa + veg + olive oil (≈600)";meals[2]="19:00 — Lentil/Bean bowl + starchy veg + salad (≈700)";}
+  if(front.dietStyle==="high_protein"){meals[0]="12:00 — Chicken/Turkey + extra veg (lower grain) (≈600)";}
+  if(front.dietStyle==="convenience"){meals[0]="12:00 — Rotisserie chicken + micro rice + bagged salad (≈600)";meals[2]="19:00 — Frozen salmon + frozen veg + micro potato (≈700)";}
+  const med=[]; if((B||0)>=30&&(front.familyHistory.cvd||front.familyHistory.dm||front.familyHistory.htn)) med.push("Medical: Primary care visit for A1c, lipids, and blood pressure within 30 days.");
+  if((+front.age||0)>=40&&front.goalType!=="general_health") med.push("Consider medical clearance prior to vigorous training.");
+  const clean=comp.levName.replace(" (capped)",""); const idx=Math.min(LEVELS.findIndex(L=>L.name===clean)+1,LEVELS.length-1); const next=LEVELS[idx].name;
+  const fam=Object.entries(front.familyHistory).filter(([,v])=>v).map(([k])=>({cvd:"heart disease",dm:"diabetes",cancer:"cancer",obesity:"obesity",htn:"hypertension"}[k])).join(", ")||"none reported";
+  return {B,books,sleep,plan,kcal,protein,fast,meals,med,next,clean,fam,story:narrative(d,clean)};
+ },[comp,front]);
+
+ // Completion hook
+ useEffect(()=>{ if(step===4&&!sent){ setSent(true); if(CFG.hook){ const payload={event:"kpi_complete",at:new Date().toISOString(),front:{name:front.name,age:front.age,sex:front.sex},score:comp.raw,level:rx.clean,bmi:rx.B,page:location.href,referrer:document.referrer,ua:navigator.userAgent}; fetch(CFG.hook,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}).catch(()=>{}) } } },[step,sent,front,comp,rx]);
+
+ // Admin counter fetch
+ useEffect(()=>{ async function load(){ if(!CFG.admin||!CFG.countApi) return; try{ setNote("fetching…"); const r=await fetch(CFG.countApi,{cache:"no-store"}); if(!r.ok) throw 0; const j=await r.json(); setCount(typeof j.count==="number"?j.count:null); setNote(""); }catch(e){ setNote("count_api unreachable"); } } load(); const t=(CFG.admin&&CFG.countApi)?setInterval(load,60000):null; return()=>t&&clearInterval(t); },[]);
+
+ async function sendEmail(e){ e.preventDefault(); if(!/.+@.+\..+/.test(email)){setEmailStatus("Enter a valid email");return;} try{ setEmailStatus("Sending…"); if(CFG.email){ const summary={name:front.name,email,score:comp.raw,level:rx.clean,bmi:rx.B,family_history:rx.fam,date:new Date().toISOString()}; const r=await fetch(CFG.email,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({...summary,data:{front,comp,rx}})}); setEmailStatus(r.ok?"Sent! Check your inbox.":"Submitted. (Check your form service)"); if(CFG.hook){ fetch(CFG.hook,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({event:"kpi_email",email,name:front.name,at:new Date().toISOString()})}).catch(()=>{}) } } else { const body=encodeURIComponent(`Name: ${front.name}\nScore: ${comp.raw}\nLevel: ${rx.clean}\nBMI: ${rx.B}\n\n(Attach JSON results from Download JSON button.)`); location.href=`mailto:${email}?subject=KPI Results&body=${body}`; setEmailStatus("Opened your email client."); } }catch{ setEmailStatus("Error sending. Try again."); }}
+
+ return (<div>
+  <header className="space-y-1 mb-4"><h1 className="text-3xl font-bold">KPI — Kirstein Performance Index</h1><p className="text-sm text-gray-600">Diagnostic → Prescription. Tough scale. Real gains.</p></header>
+
+  {step===0 && (<>
+   <div className="mb-6 border rounded-xl bg-white p-4">
+     <h2 className="text-xl font-semibold">Welcome</h2>
+     <p className="text-sm text-gray-700 mt-2 leading-6">
+       Welcome to your one‑stop assessment for personality, execution, diet, and health. This test places you on a 7‑level “wooden plank” spectrum and pinpoints key weaknesses to improve. At the end you’ll receive a clear, clinical‑style <b>prescription</b>—books to read, a day‑by‑day exercise plan, a structured meal plan, and targeted behavior changes. KPI is meant to be <b>re‑taken</b>: implement your plan, then come back in 2–3 months to measure progress and climb to the next level.
+     </p>
+   </div>
+   <div className="mb-6 border rounded-xl bg-white p-4">
+     <h2 className="text-xl font-semibold">Why use this index</h2>
+     <p className="text-sm text-gray-700 mt-2 leading-6">
+       Personal improvement has always been a passion of mine. I’ve read widely across habits, leadership, psychology, and performance—and the lesson is consistent: your life changes when you improve constantly and push your boundaries. I built KPI to share those lessons in a practical way so you can find—then sustain—personal improvement in your own life.
+     </p>
+     <ul className="list-disc pl-6 text-sm text-gray-700 mt-2 space-y-1">
+       <li><b>Clear diagnosis:</b> honest placement on a 7‑level spectrum + domain breakdowns.</li>
+       <li><b>Targeted plan:</b> precise prescriptions for books, habits, training, and diet.</li>
+       <li><b>Measurable progress:</b> re‑test in 60–90 days and see objective score movement.</li>
+       <li><b>Built‑in accountability:</b> tough scale that rewards real change, not wishful thinking.</li>
+     </ul>
+   </div>
+  </>)}
+
+  <nav className="flex flex-wrap gap-2 text-sm mb-6">{["Profile","Forced‑Choice","Scenarios","Behavior","Results"].map((l,i)=>(<button key={i} onClick={()=>setStep(i)} className={"px-3 py-1 rounded-full border "+(step===i?"bg-black text-white":"bg-white")}>{i+1}. {l}</button>))}</nav>
+
+  {step===0 && (<section className="space-y-6">
+    <h2 className="text-xl font-semibold">Step 0 — Front Questionnaire</h2>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {[["Name","name"],["Age","age"],["Sex","sex","select",["male","female","other","prefer_not"]],["Height (cm)","heightCm"],["Weight (kg)","weightKg"]].map(([l,k,t,opts],i)=>(
+        <label key={i} className="flex flex-col gap-1"><span>{l}</span>{t==="select"?<select className="border rounded px-3 py-2" value={front[k]} onChange={e=>setFront({...front,[k]:e.target.value})}>{opts.map(o=><option key={o} value={o}>{o}</option>)}</select>:<input className="border rounded px-3 py-2" value={front[k]} onChange={e=>setFront({...front,[k]:e.target.value})}/>} </label>
+      ))}
+      <label className="flex flex-col gap-1"><span>Injury/Disability affects exercise?</span><select className="border rounded px-3 py-2" value={front.injuryOrDisability} onChange={e=>setFront({...front,injuryOrDisability:e.target.value})}><option value="no">No</option><option value="yes">Yes</option></select></label>
+      {front.injuryOrDisability==="yes"&&(<label className="flex flex-col gap-1 md:col-span-2"><span>Notes</span><input className="border rounded px-3 py-2" value={front.injuryNotes} onChange={e=>setFront({...front,injuryNotes:e.target.value})}/></label>)}
+      <div className="md:col-span-2 grid grid-cols-2 gap-3 border rounded p-3"><span className="col-span-2 font-medium">Family history</span>
+        {[["cvd","Heart disease"],["dm","Diabetes"],["cancer","Cancer"],["obesity","Obesity"],["htn","Hypertension"]].map(([k,l])=>(<label key={k} className="flex items-center gap-2"><input type="checkbox" checked={front.familyHistory[k]} onChange={e=>setFront({...front,familyHistory:{...front.familyHistory,[k]:e.target.checked}})}/><span>{l}</span></label>))}
+      </div>
+      {[["Wake time","wakeTime","time"],["Sleep time","sleepTime","time"],["Energy level","energyLevel","select",["low","moderate","high"]],["Free time per week","freeTimePerWeek","select",["<2h","2-4h","5h+"]],["Diet style","dietStyle","select",["balanced","high_protein","plant_based","convenience","other"]],["Current fasting","fastingCurrent","select",["none","16_8","20_4","24h","other"]],["Primary goal","goalType","select",["weight_loss","strength","endurance","general_health"]],["Target weight (kg)","targetWeightKg"],["Horizon (months)","horizonMonths"]].map(([l,k,t,opts],i)=>(
+        <label key={i} className="flex flex-col gap-1"><span>{l}</span>{t==="select"?<select className="border rounded px-3 py-2" value={front[k]} onChange={e=>setFront({...front,[k]:e.target.value})}>{opts.map(o=><option key={o} value={o}>{o}</option>)}</select>:t==="time"?<input type="time" className="border rounded px-3 py-2" value={front[k]} onChange={e=>setFront({...front,[k]:e.target.value})}/>:<input className="border rounded px-3 py-2" value={front[k]} onChange={e=>setFront({...front,[k]:e.target.value})}/>}</label>
+      ))}
+    </div>
+    <div className="flex justify-end"><button className="px-4 py-2 rounded bg-black text-white" onClick={()=>setStep(1)}>Continue →</button></div>
+  </section>)}
+
+  {step===1 && (<section className="space-y-6"><h2 className="text-xl font-semibold">Step 1 — Forced‑Choice Blocks</h2><p className="text-sm text-gray-600">For each block, pick one <b>Most like you</b> and one <b>Least like you</b>.</p>
+    <div className="space-y-4">{FC.map(b=>{const a=fc[b.id]||{};return(<div key={b.id} className="border rounded p-4 space-y-3 bg-white"><div className="flex items-center justify-between"><h3 className="font-medium">Block {b.id}</h3>{a.m!=null&&a.l!=null?<span className="text-xs text-green-600">answered</span>:<span className="text-xs text-gray-500">incomplete</span>}</div><div className="grid md:grid-cols-2 gap-3">{b.s.map((it,i)=>(<div key={i} className="border rounded p-3"><p className="text-sm">{it[0]}</p><div className="mt-2 flex gap-3 text-sm"><label className="inline-flex items-center gap-1"><input type="radio" name={`m${b.id}`} checked={a.m===i} onChange={()=>setFc({...fc,[b.id]:{...a,m:i}})}/><span>Most</span></label><label className="inline-flex items-center gap-1"><input type="radio" name={`l${b.id}`} checked={a.l===i} onChange={()=>setFc({...fc,[b.id]:{...a,l:i}})}/><span>Least</span></label></div></div>))}</div></div>);})}</div>
+    <div className="flex justify-between"><button className="px-4 py-2 rounded border" onClick={()=>setStep(0)}>← Back</button><button disabled={!FC.every(b=>(fc[b.id]||{}).m!=null&&(fc[b.id]||{}).l!=null)} className={"px-4 py-2 rounded "+(FC.every(b=>(fc[b.id]||{}).m!=null&&(fc[b.id]||{}).l!=null)?"bg-black text-white":"bg-gray-300 text-gray-700")} onClick={()=>setStep(2)}>Continue →</button></div>
+  </section>)}
+
+  {step===2 && (<section className="space-y-6"><h2 className="text-xl font-semibold">Step 2 — Situational Scenarios</h2><p className="text-sm text-gray-600">Pick the option you’d choose.</p>
+    <div className="space-y-4">{SJT.map(it=>(<div key={it.id} className="border rounded p-4 space-y-2 bg-white"><h3 className="font-medium">Scenario {it.id}</h3><p className="text-sm text-gray-700">{it.q}</p><div className="grid gap-2">{it.o.map((op,i)=>(<label key={i} className="flex items-center gap-2 border rounded p-2 cursor-pointer"><input type="radio" name={`s${it.id}`} checked={sjt[it.id]===i} onChange={()=>setSjt({...sjt,[it.id]:i})}/><span className="text-sm">{op[0]}</span></label>))}</div></div>))}</div>
+    <div className="flex justify-between"><button className="px-4 py-2 rounded border" onClick={()=>setStep(1)}>← Back</button><button disabled={!SJT.every(x=>sjt[x.id]!=null)} className={"px-4 py-2 rounded "+(SJT.every(x=>sjt[x.id]!=null)?"bg-black text-white":"bg-gray-300 text-gray-700")} onClick={()=>setStep(3)}>Continue →</button></div>
+  </section>)}
+
+  {step===3 && (<section className="space-y-6"><h2 className="text-xl font-semibold">Step 3 — Behavioral Anchors</h2>
+    <div className="space-y-4">{BEH.map(bi=>(<div key={bi.id} className="border rounded p-4 bg-white"><p className="font-medium">{bi.q}</p><div className="mt-2 grid md:grid-cols-5 gap-2">{bi.b.map((t,i)=>(<label key={i} className="flex items-center gap-2 border rounded p-2 cursor-pointer"><input type="radio" name={`b${bi.id}`} checked={beh[bi.id]===i} onChange={()=>setBeh({...beh,[bi.id]:i})}/><span className="text-sm">{t}</span></label>))}</div></div>))}</div>
+    <div className="flex justify-between"><button className="px-4 py-2 rounded border" onClick={()=>setStep(2)}>← Back</button><button disabled={!BEH.every(x=>beh[x.id]!=null)} className={"px-4 py-2 rounded "+(BEH.every(x=>beh[x.id]!=null)?"bg-black text-white":"bg-gray-300 text-gray-700")} onClick={()=>setStep(4)}>See Results →</button></div>
+  </section>)}
+
+  {step===4 && (<section className="space-y-6">
+    <h2 className="text-xl font-semibold">Results — KPI Prescription Plan</h2>
+    <div className="grid md:grid-cols-2 gap-4">
+      <div className="border rounded p-4 space-y-2 bg-white">
+        <p><span className="font-medium">Name:</span> {front.name||"(user)"} </p>
+        <p><span className="font-medium">Date:</span> {new Date().toLocaleDateString()} </p>
+        <p><span className="font-medium">Level (Wooden Plank):</span> {rx.clean} </p>
+        <p><span className="font-medium">Score:</span> {comp.raw} / 190</p>
+        <p><span className="font-medium">BMI:</span> {rx.B??"—"} <span className="text-gray-600">({bmiCat(rx.B)})</span></p>
+      </div>
+      <div className="border rounded p-4 space-y-2 bg-white">
+        <p className="font-medium">Trait Profile</p>
+        <Bar label="Drive" value={comp.bars["Drive"]}/>
+        <Bar label="Emotional Intelligence (EQ)" value={comp.bars["Emotional Intelligence (EQ)"]}/>
+        <Bar label="Discipline" value={comp.bars["Discipline"]}/>
+        <Bar label="Resilience" value={comp.bars["Resilience"]}/>
+        <p className="text-xs text-gray-600 mt-1">EQ = Emotional Intelligence.</p>
+      </div>
+    </div>
+
+    <section className="border rounded p-4 bg-white"><h3 className="text-lg font-semibold">This Is You</h3><p className="text-sm mt-1 leading-6">{rx.story}</p></section>
+
+    <section className="border rounded p-4 bg-white">
+      <h3 className="text-lg font-semibold">Health Summary & Risk Context</h3>
+      <ul className="list-disc pl-6 text-sm space-y-1 mt-2">
+        <li><b>BMI:</b> {rx.B??"—"} ({bmiCat(rx.B)})</li>
+        <li><b>Family history:</b> {rx.fam}</li>
+        <li><b>Heart disease</b> is the #1 cause of death in the U.S. (680,981 deaths, 2023).</li>
+        <li><b>Obesity</b> affects ~40% of U.S. adults (2021–2023) and raises risks for stroke, some cancers, and premature death.</li>
+        <li><b>Hypertension</b> affects nearly half of adults (~48%); ~1 in 4 have it under control.</li>
+      </ul>
+      <p className="text-xs text-gray-600 mt-2">Sources: <a className="underline" href="https://www.cdc.gov/nchs/fastats/heart-disease.htm" target="_blank">CDC Heart Disease</a>; <a className="underline ml-2" href="https://www.cdc.gov/nchs/products/databriefs/db508.htm" target="_blank">CDC Adult Obesity 2021–2023</a>; <a className="underline ml-2" href="https://www.cdc.gov/obesity/basics/consequences.html" target="_blank">CDC Obesity Consequences</a>; <a className="underline ml-2" href="https://www.cdc.gov/high-blood-pressure/data-research/facts-stats/index.html" target="_blank">CDC High Blood Pressure Facts (2025)</a>.</p>
+      <p className="text-xs text-gray-600 mt-1">This plan supports health but isn’t medical care. Consult a clinician for diagnosis/treatment.</p>
+    </section>
+
+    <section className="border rounded p-4 bg-white">
+      <h3 className="text-lg font-semibold">Wooden Plank Spectrum</h3>
+      <div className="flex flex-wrap gap-2 mt-2">{LEVELS.map(L=>(<span key={L.name} className={"pill "+(L.name===rx.clean?"active":"")}>{L.name}</span>))}</div>
+      <div className="mt-3 grid md:grid-cols-2 gap-3 text-sm">{LEVELS.map(L=>(<div key={L.name} className={"border rounded p-3 "+(L.name===rx.clean?"border-black":"")}><p className="font-medium">{L.name}</p><p className="mt-1 text-gray-700">{LEVEL_DESC[L.name.replace(" (capped)","")]||""}</p></div>))}</div>
+    </section>
+
+    <section className="border rounded p-4 bg-white">
+      <h3 className="text-lg font-semibold">1) Books — Read in Order</h3>
+      <ul className="list-disc pl-6 mt-2 space-y-1 text-sm">{(rx.books.length?rx.books:[{title:"Atomic Habits — James Clear",why:"Raise adherence and consistency across habits."},{title:"Cues — Vanessa Van Edwards",why:"Improve social perception and persuasion (EQ)."},{title:"Meditations — Marcus Aurelius",why:"Develop resilience and perspective under stress."}]).slice(0,4).map((b,i)=>(<li key={i}><span className="font-medium">{b.title}</span> — {b.why}</li>))}</ul>
+    </section>
+
+    <section className="border rounded p-4 bg-white">
+      <h3 className="text-lg font-semibold">2) Exercise</h3>
+      <p className="text-sm"><b>Wake:</b> {rx.sleep.wake} | <b>Bed:</b> {rx.sleep.bed} | <b>Screens off:</b> {rx.sleep.off}</p>
+      <p className="text-sm mt-1"><b>Prescription:</b> Wake at {rx.sleep.wake}, 16oz water, <b>work out 30 min</b>, shower, coffee. Consistency &gt; intensity.</p>
+      <div className="mt-3 grid md:grid-cols-2 gap-3 text-sm">{Object.entries(rx.plan).map(([d,arr])=>(<div key={d} className="border rounded p-3"><p className="font-medium">{d}</p><ul className="list-disc pl-5 mt-1 space-y-1">{arr.map((ln,i)=>(<li key={i}>{ln}</li>))}</ul></div>))}</div>
+      <p className="text-xs text-gray-600 mt-2">Progression: add 1–2 reps/week or +2.5–5 lb when last set ≤ RPE7.</p>
+    </section>
+
+    <section className="border rounded p-4 bg-white">
+      <h3 className="text-lg font-semibold">3) Diet</h3>
+      <p className="text-sm"><b>Calories:</b> {rx.kcal}/day | <b>Protein:</b> ~{rx.protein} g/day | <b>Fasting:</b> {rx.fast}</p>
+      <p className="text-sm"><b>Tracking:</b> Log every meal in MyFitnessPal. Target 1 gallon water/day.</p>
+      <ul className="list-disc pl-6 mt-2 text-sm space-y-1">{rx.meals.map((m,i)=>(<li key={i}>{m}</li>))}</ul>
+    </section>
+
+    <section className="border rounded p-4 bg-white">
+      <h3 className="text-lg font-semibold">Send This Plan To Your Email</h3>
+      <p className="text-sm text-gray-600">Get a copy of your score, level, BMI, and the full prescription.</p>
+      <form className="mt-2 flex gap-2" onSubmit={sendEmail}><input className="border rounded px-3 py-2 flex-1" type="email" placeholder="you@example.com" value={email} onChange={e=>setEmail(e.target.value)} required/><button className="px-4 py-2 rounded bg-black text-white" type="submit">Send</button></form>
+      <p className="text-xs mt-2">{emailStatus}</p>{!CFG.email&&(<p className="text-xs text-gray-500 mt-1">Tip: add <code>?email=YOUR_ENDPOINT</code> to the URL (Formspree, Zapier, Make, etc.).</p>)}
+    </section>
+
+    {rx.med.length>0&&(<section className="border rounded p-4 bg-white"><h3 className="text-lg font-semibold">Medical / Safety</h3><ul className="list-disc pl-6 mt-2 text-sm space-y-1">{rx.med.map((f,i)=>(<li key={i}>{f}</li>))}</ul></section>)}
+
+    <section className="border rounded p-4 bg-white">
+      <h3 className="text-lg font-semibold">Next Test</h3>
+      <p className="text-sm">Re‑take KPI in <b>60 days</b>. Goal: +12 points. Next level target: <b>{rx.next}</b>.</p>
+      <div className="mt-3 flex gap-2"><button className="px-4 py-2 rounded border" onClick={()=>print()}>Print / Save PDF</button><button className="px-4 py-2 rounded bg-black text-white" onClick={()=>{const blob=new Blob([JSON.stringify({front,comp,rx},null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`kpi_${(front.name||"user").replace(/\s+/g,"_")}_${Date.now()}.json`;a.click();URL.revokeObjectURL(url);}}>Download JSON</button></div>
+    </section>
+  </section>)}
+
+  {CFG.admin&&(<div className="admin"><span className="font-medium">KPI completions:</span> {count!=null?count:"—"} {note&&<span className="opacity-80">({note})</span>}</div>)}
+ </div>);
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body></html>
