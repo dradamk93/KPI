@@ -150,12 +150,27 @@ function App(){
  },[comp,front]);
 
  // Completion hook
- useEffect(()=>{ if(step===4&&!sent){ setSent(true); if(CFG.hook){ const payload={event:"kpi_complete",at:new Date().toISOString(),front:{name:front.name,age:front.age,sex:front.sex},score:comp.raw,level:rx.clean,bmi:rx.B,page:location.href,referrer:document.referrer,ua:navigator.userAgent}; fetch(CFG.hook,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}).catch(()=>{}) } } },[step,sent,front,comp,rx]);
+ useEffect(()=>{ if(step===4&&!sent){ setSent(true); if(CFG.hook){ const payload={event:"kpi_complete",at:new Date().toISOString(),front:{name:front.name,age:front.age,sex:front.sex},score:comp.raw,level:rx.clean,bmi:rx.B,page:location.href,referrer:document.referrer,ua:navigator.userAgent}; fetch(fetch(CFG.hook, {
+  method: "POST",
+  mode: "no-cors",
+  body: JSON.stringify(payload)
+});
+ } } },[step,sent,front,comp,rx]);
 
  // Admin counter fetch
  useEffect(()=>{ async function load(){ if(!CFG.admin||!CFG.countApi) return; try{ setNote("fetching…"); const r=await fetch(CFG.countApi,{cache:"no-store"}); if(!r.ok) throw 0; const j=await r.json(); setCount(typeof j.count==="number"?j.count:null); setNote(""); }catch(e){ setNote("count_api unreachable"); } } load(); const t=(CFG.admin&&CFG.countApi)?setInterval(load,60000):null; return()=>t&&clearInterval(t); },[]);
 
- async function sendEmail(e){ e.preventDefault(); if(!/.+@.+\..+/.test(email)){setEmailStatus("Enter a valid email");return;} try{ setEmailStatus("Sending…"); if(CFG.email){ const summary={name:front.name,email,score:comp.raw,level:rx.clean,bmi:rx.B,family_history:rx.fam,date:new Date().toISOString()}; const r=await fetch(CFG.email,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({...summary,data:{front,comp,rx}})}); setEmailStatus(r.ok?"Sent! Check your inbox.":"Submitted. (Check your form service)"); if(CFG.hook){ fetch(CFG.hook,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({event:"kpi_email",email,name:front.name,at:new Date().toISOString()})}).catch(()=>{}) } } else { const body=encodeURIComponent(`Name: ${front.name}\nScore: ${comp.raw}\nLevel: ${rx.clean}\nBMI: ${rx.B}\n\n(Attach JSON results from Download JSON button.)`); location.href=`mailto:${email}?subject=KPI Results&body=${body}`; setEmailStatus("Opened your email client."); } }catch{ setEmailStatus("Error sending. Try again."); }}
+ async function sendEmail(e){ e.preventDefault(); if(!/.+@.+\..+/.test(email)){setEmailStatus("Enter a valid email");return;} try{ setEmailStatus("Sending…"); if(CFG.email){ const summary={name:front.name,email,score:comp.raw,level:rx.clean,bmi:rx.B,family_history:rx.fam,date:new Date().toISOString()}; const r=await fetch(fetch(CFG.hook, {
+  method: "POST",
+  mode: "no-cors",
+  body: JSON.stringify({
+    event: "kpi_email",
+    email,
+    name: front.name,
+    at: new Date().toISOString()
+  })
+});
+ } } else { const body=encodeURIComponent(`Name: ${front.name}\nScore: ${comp.raw}\nLevel: ${rx.clean}\nBMI: ${rx.B}\n\n(Attach JSON results from Download JSON button.)`); location.href=`mailto:${email}?subject=KPI Results&body=${body}`; setEmailStatus("Opened your email client."); } }catch{ setEmailStatus("Error sending. Try again."); }}
 
  return (<div>
   <header className="space-y-1 mb-4"><h1 className="text-3xl font-bold">KPI — Kirstein Performance Index</h1><p className="text-sm text-gray-600">Diagnostic → Prescription. Tough scale. Real gains.</p></header>
